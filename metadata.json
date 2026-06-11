@@ -1,0 +1,6 @@
+{
+  "name": "Standard Generic Image Background Remover",
+  "description": "Android utility application simulation that runs local Xenova/rmbg-1.4 ONNX background removal, supporting NNAPI TPU acceleration, dual gallery and file manager selectors, real-time inference log stream, and interactive mask adjustment.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
