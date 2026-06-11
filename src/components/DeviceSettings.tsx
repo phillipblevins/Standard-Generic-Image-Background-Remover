@@ -3,12 +3,13 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import { 
   Cpu, HardDrive, Sliders, RefreshCw, Layers, Check, FolderPlus, Info,
-  Download, CheckCircle2, Wifi, WifiOff, AlertCircle
+  Download, CheckCircle2, FileText, Tags
 } from "lucide-react";
 import { removeBackground } from "@imgly/background-removal";
+import { generateFormattedFilename } from "../utils/filenameHelper";
 
 interface DeviceSettingsProps {
   folderTarget: string;
@@ -35,6 +36,37 @@ export default function DeviceSettings({
   const [cacheCleared, setCacheCleared] = useState(false);
   const [coreFreq, setCoreFreq] = useState("High Boost (850 MHz)");
 
+  // Custom File Naming States
+  const [namingTemplate, setNamingTemplate] = useState(() => {
+    return localStorage.getItem("birefnet_filename_template") || "<Original_Filename>_sgibr[Counter]_[Date]";
+  });
+  const templateInputRef = useRef<HTMLInputElement>(null);
+
+  const handleTemplateChange = (val: string) => {
+    setNamingTemplate(val);
+    localStorage.setItem("birefnet_filename_template", val);
+  };
+
+  const insertToken = (token: string) => {
+    const input = templateInputRef.current;
+    if (!input) {
+      handleTemplateChange(namingTemplate + token);
+      return;
+    }
+    const start = input.selectionStart ?? namingTemplate.length;
+    const end = input.selectionEnd ?? namingTemplate.length;
+    const left = namingTemplate.substring(0, start);
+    const right = namingTemplate.substring(end);
+    const updated = left + token + right;
+    
+    handleTemplateChange(updated);
+    setTimeout(() => {
+      input.focus();
+      const cursorPosition = start + token.length;
+      input.setSelectionRange(cursorPosition, cursorPosition);
+    }, 0);
+  };
+
   // Offline caching systems
   const [downloadProgress, setDownloadProgress] = useState<Record<string, number>>({});
   const [downloading, setDownloading] = useState<Record<string, boolean>>({});
@@ -52,21 +84,17 @@ export default function DeviceSettings({
     return defaultCached;
   });
 
-  const [airplaneMode, setAirplaneMode] = useState(() => {
-    return localStorage.getItem("birefnet_offline_airplane_saved_mode") === "true";
-  });
-
   const modelsList = [
-    { id: 'General', size: '115 MB', name: 'BiRefNet Standard (General)' },
-    { id: 'General-HR', size: '230 MB', name: 'BiRefNet High-Res' },
-    { id: 'Matting-HR', size: '245 MB', name: 'BiRefNet HR Matting (Extreme Details)' },
-    { id: 'Matting', size: '122 MB', name: 'BiRefNet Matting' },
-    { id: 'Portrait', size: '85 MB', name: 'BiRefNet Portrait (Headshots)' },
-    { id: 'General-reso_512', size: '42 MB', name: 'BiRefNet 512x512 Flat' },
-    { id: 'General-Lite', size: '24 MB', name: 'BiRefNet Lite (Standard)' },
-    { id: 'General-Lite-2K', size: '68 MB', name: 'BiRefNet Lite 2K border' },
-    { id: 'DIS', size: '155 MB', name: 'BiRefNet DIS5K' },
-    { id: 'COD', size: '140 MB', name: 'BiRefNet COD (Camouflage)' },
+    { id: 'General', size: '115 MB', name: 'BiRefNet Standard (General) [1024x1024]' },
+    { id: 'General-HR', size: '230 MB', name: 'BiRefNet High-Res [2048x2048]' },
+    { id: 'Matting-HR', size: '245 MB', name: 'BiRefNet HR Matting (Extreme Details) [2048x2048]' },
+    { id: 'Matting', size: '122 MB', name: 'BiRefNet Matting [1024x1024]' },
+    { id: 'Portrait', size: '85 MB', name: 'BiRefNet Portrait (Headshots) [1024x1024]' },
+    { id: 'General-reso_512', size: '42 MB', name: 'BiRefNet 512x512 Flat [512x512]' },
+    { id: 'General-Lite', size: '24 MB', name: 'BiRefNet Lite (Standard) [1024x1024]' },
+    { id: 'General-Lite-2K', size: '68 MB', name: 'BiRefNet Lite 2K border [2048x2048]' },
+    { id: 'DIS', size: '155 MB', name: 'BiRefNet DIS5K [1024x1024]' },
+    { id: 'COD', size: '140 MB', name: 'BiRefNet COD (Camouflage) [1024x1024]' },
   ];
 
   const triggerDownloadForModel = async (id: string) => {
@@ -124,15 +152,6 @@ export default function DeviceSettings({
         await triggerDownloadForModel(m.id);
       }
     }
-  };
-
-  const toggleAirplaneMode = () => {
-    const newValue = !airplaneMode;
-    setAirplaneMode(newValue);
-    localStorage.setItem("birefnet_offline_airplane_saved_mode", newValue ? "true" : "false");
-    
-    // Dispatch a custom event to notify other components instantly of changing offline simulation
-    window.dispatchEvent(new Event("birefnet_airplane_mode_changed"));
   };
 
   const providers = [
@@ -213,44 +232,88 @@ export default function DeviceSettings({
           </form>
         </div>
 
-        {/* 1B. Offline Verification Flight Mode Selector */}
+        {/* 1B. Custom File Naming Format */}
         <div className="bg-[#1a1f36]/40 backdrop-blur-md border border-white/10 rounded-2xl p-4">
-          <div className="flex items-center justify-between">
-            <div className="flex flex-col gap-0.5 text-left pr-2">
-              <h3 className="text-xs font-bold text-slate-200 flex items-center gap-1.5 uppercase tracking-wide">
-                {airplaneMode ? (
-                  <WifiOff className="w-4 h-4 text-amber-400 animate-pulse shrink-0" />
-                ) : (
-                  <Wifi className="w-4 h-4 text-indigo-400 shrink-0" />
-                )}
-                Simulate Offline Flight Mode
-              </h3>
-              <p className="text-[10px] text-slate-400 leading-snug">
-                Block cell tower coverage mock server requests. Forces execution directly from offline cached weights.
-              </p>
-            </div>
-            <button
-              id="settings-toggle-airplane"
-              onClick={toggleAirplaneMode}
-              className={`w-11 h-6 rounded-full p-0.5 transition-colors cursor-pointer focus:outline-none shrink-0 border border-white/10 ${
-                airplaneMode ? "bg-amber-500" : "bg-black/40"
-              }`}
-            >
-              <div
-                className={`w-4 h-4 rounded-full bg-white transition-transform duration-300 shadow-md ${
-                  airplaneMode ? "translate-x-5" : "translate-x-0"
-                }`}
-              />
-            </button>
+          <h3 className="text-xs font-bold text-slate-200 mb-2 flex items-center gap-1.5 uppercase tracking-wide">
+            <FileText className="w-4 h-4 text-indigo-400" />
+            File Naming Format
+          </h3>
+          <p className="text-[10px] text-slate-400 mb-3 leading-relaxed">
+            Customize saved assets nomenclature. Use the tags below to construct your dynamic file schema.
+          </p>
+
+          <div className="mb-3.5 flex flex-col gap-1.5">
+            <label className="text-[9px] font-bold uppercase tracking-wider text-slate-500 font-mono">Template Schema</label>
+            <input
+              ref={templateInputRef}
+              type="text"
+              value={namingTemplate}
+              onChange={(e) => handleTemplateChange(e.target.value)}
+              placeholder="e.g. <Original_Filename>_sgibr[Counter]_[Date]"
+              className="w-full bg-black/25 border border-white/10 rounded-xl px-3 py-2 text-xs font-mono text-indigo-300 placeholder-slate-600 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500"
+            />
           </div>
-          {airplaneMode && (
-            <div className="mt-3 p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-start gap-2 text-[10px] text-amber-300 font-medium">
-              <AlertCircle className="w-4 h-4 shrink-0 text-amber-400" />
-              <span>
-                Zero Cellular connection enabled. Running segmentation on non-downloaded weights will fail until they are cached below.
-              </span>
+
+          {/* Clickable Quick Tags Grid */}
+          <div className="mb-4">
+            <span className="text-[9px] font-bold uppercase tracking-wider text-slate-500 font-mono block mb-1.5">Insert Dynamic Tags</span>
+            <div className="flex flex-wrap gap-1.5 block">
+              <button
+                type="button"
+                onClick={() => insertToken("<Original_Filename>")}
+                className="text-[9px] font-semibold bg-indigo-500/10 hover:bg-indigo-500/20 active:scale-95 border border-indigo-500/20 text-indigo-300 px-2.5 py-1 rounded-lg transition-all cursor-pointer"
+                title="Inserts original loaded file name"
+              >
+                &lt;Original_Filename&gt;
+              </button>
+              <button
+                type="button"
+                onClick={() => insertToken("<Counter>")}
+                className="text-[9px] font-semibold bg-indigo-500/10 hover:bg-indigo-500/20 active:scale-95 border border-indigo-500/20 text-indigo-300 px-2.5 py-1 rounded-lg transition-all cursor-pointer"
+                title="Inserts counter prefix or sequence in batch"
+              >
+                &lt;Counter&gt;
+              </button>
+              <button
+                type="button"
+                onClick={() => insertToken("<Date>")}
+                className="text-[9px] font-semibold bg-indigo-500/10 hover:bg-indigo-500/20 active:scale-95 border border-indigo-500/20 text-indigo-300 px-2.5 py-1 rounded-lg transition-all cursor-pointer"
+                title="Inserts YYYYMMDD date stamp"
+              >
+                &lt;Date&gt;
+              </button>
+              <button
+                type="button"
+                onClick={() => insertToken("<Time>")}
+                className="text-[9px] font-semibold bg-indigo-500/10 hover:bg-indigo-500/20 active:scale-95 border border-indigo-500/20 text-indigo-300 px-2.5 py-1 rounded-lg transition-all cursor-pointer"
+                title="Inserts HHMMSS time stamp"
+              >
+                &lt;Time&gt;
+              </button>
+              <button
+                type="button"
+                onClick={() => insertToken("<Resolution>")}
+                className="text-[9px] font-semibold bg-indigo-500/10 hover:bg-indigo-500/20 active:scale-95 border border-indigo-500/20 text-indigo-300 px-2.5 py-1 rounded-lg transition-all cursor-pointer"
+                title="Inserts dimensions like 1024x1024"
+              >
+                &lt;Resolution&gt;
+              </button>
             </div>
-          )}
+          </div>
+
+          {/* Live Output Preview */}
+          <div className="p-3 bg-black/35 border border-white/5 rounded-xl text-left">
+            <span className="text-[9px] font-bold uppercase tracking-wider text-emerald-400 font-mono block mb-1">Live Output Preview</span>
+            <span className="text-[10px] text-slate-400 font-mono block mb-1.5">
+              Preset sample <span className="text-slate-500 font-bold">sneaker_sport.jpg (1024x1024)</span> names to:
+            </span>
+            <div className="bg-black/45 rounded-lg border border-white/5 py-1.5 px-2.5 flex items-center justify-between text-xs font-mono select-all">
+              <span className="text-emerald-300 font-bold break-all">
+                {generateFormattedFilename(namingTemplate, "sneaker_sport.jpg", 1, "1024x1024")}
+              </span>
+              <Tags className="w-3.5 h-3.5 text-slate-600 shrink-0 ml-2" />
+            </div>
+          </div>
         </div>
 
         {/* 2. Hardware Driver Execution Provider */}
@@ -311,12 +374,12 @@ export default function DeviceSettings({
           </div>
         </div>
 
-        {/* 3B. High-Performance Offline Model weights download centre */}
+        {/* 3B. High-Performance Offline Model weights download center */}
         <div className="bg-[#1a1f36]/40 backdrop-blur-md border border-white/10 rounded-2xl p-4">
           <div className="flex items-center justify-between mb-2">
             <h3 className="text-xs font-bold text-slate-200 flex items-center gap-1.5 uppercase tracking-wide">
               <Download className="w-4 h-4 text-indigo-400" />
-              Offline Model Download Centre
+              Offline Model Download Center
             </h3>
             <button
               id="settings-download-all-weights"

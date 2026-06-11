@@ -12,7 +12,7 @@ import { Sparkles, Image as ImageIcon, Cpu, Settings } from "lucide-react";
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<"eraser" | "gallery" | "settings">("eraser");
-  const [folderTarget, setFolderTarget] = useState("/Download/BackgroundRemover");
+  const [folderTarget, setFolderTarget] = useState("/Download");
   const [modelSettings, setModelSettings] = useState({
     provider: "nnapi_tpu",
     precision: "uint8", // INT8 quantized (fastest offline model)
@@ -89,7 +89,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-[#0c0f1d] via-[#080a13] to-[#1e1a38] flex flex-col justify-between selection:bg-indigo-500/35 selection:text-indigo-200">
+    <div className="min-h-screen bg-[#070913] flex flex-col selection:bg-indigo-500/35 selection:text-indigo-200">
       
       {/* 3D Physical Smartphone layout container */}
       <AndroidFrame
@@ -102,24 +102,24 @@ export default function App() {
         <div className="flex-1 flex flex-col justify-between">
           
           {/* Main Display screen router switch */}
-          {activeTab === "eraser" && (
+          <div className={`flex-1 flex flex-col ${activeTab === "eraser" ? "" : "hidden"}`}>
             <EraserStage
               onSaveToDevice={saveToGallery}
               folderTarget={folderTarget}
               modelSettings={modelSettings}
               setTpuActive={setTpuActive}
             />
-          )}
+          </div>
 
-          {activeTab === "gallery" && (
+          <div className={`flex-1 flex flex-col ${activeTab === "gallery" ? "" : "hidden"}`}>
             <DeviceGallery
               items={galleryItems}
               onDeleteItem={deleteFromGallery}
               folderTarget={folderTarget}
             />
-          )}
+          </div>
 
-          {activeTab === "settings" && (
+          <div className={`flex-1 flex flex-col ${activeTab === "settings" ? "" : "hidden"}`}>
             <DeviceSettings
               folderTarget={folderTarget}
               setFolderTarget={setFolderTarget}
@@ -127,7 +127,7 @@ export default function App() {
               setModelSettings={setModelSettings}
               onClearGallery={clearAllGallery}
             />
-          )}
+          </div>
 
           {/* Android Material You Bottom Navigation Bar */}
           <div className="bg-white/5 border-t border-white/10 backdrop-blur-lg py-2.5 px-3 flex justify-around select-none shrink-0 z-40">
@@ -199,13 +199,6 @@ export default function App() {
 
         </div>
       </AndroidFrame>
-
-      {/* Aesthetic outer footer branding - Simple, humble, clean */}
-      <div className="bg-slate-950/40 backdrop-blur-md py-3.5 border-t border-white/5 text-center select-none shrink-0">
-        <span className="font-sans text-[10px] tracking-wide text-slate-500 uppercase">
-          Neural API offline background removal utility
-        </span>
-      </div>
 
     </div>
   );

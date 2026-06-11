@@ -121,7 +121,7 @@ export default function DeviceGallery({ items, onDeleteItem, folderTarget }: Dev
           </div>
           <h3 className="text-sm font-semibold text-slate-300 mb-1">No Processed Images Found</h3>
           <p className="text-[11px] text-slate-500 max-w-xs leading-relaxed">
-            Your saved PNG assets will accumulate and store securely here. Go to the <strong className="text-slate-400">Eraser</strong> tab to create model segments!
+            Your saved PNG assets will accumulate and store here.
           </p>
         </div>
       ) : (

@@ -5,6 +5,7 @@
 
 import React, { useState, useRef, useEffect } from "react";
 import { ImageProcessor } from "../services/imageProcessor";
+import { generateFormattedFilename } from "../utils/filenameHelper";
 import { 
   Upload, Sliders, Image as ImageIcon, Sparkles, Paintbrush, 
   Trash2, Download, RefreshCw, Layers, Check, Play, Eye, EyeOff,
@@ -25,25 +26,26 @@ interface BatchQueueItem {
   name: string;
   file?: File;
   preset?: StockPreset;
+  resolution?: string;
 }
 
 export const BIREFNET_WEIGHTS_MAP: Record<string, { file: string; desc: string }> = {
-  'General': { file: 'BiRefNet', desc: 'Standard central subject high-fidelity segmentation (Default)' },
-  'General-HR': { file: 'BiRefNet_HR', desc: 'High-Resolution sharp boundary extraction for crisp details' },
-  'Matting-HR': { file: 'BiRefNet_HR-matting', desc: 'High-Resolution matting tuned for micro hair/fur layers' },
-  'Matting': { file: 'BiRefNet-matting', desc: 'Soft transition transparent alpha details for fine objects' },
-  'Portrait': { file: 'BiRefNet-portrait', desc: 'Highly centered saliency prioritizing human head/shoulders' },
-  'General-reso_512': { file: 'BiRefNet_512x512', desc: 'Fast execution speed utilizing compact 512px space' },
-  'General-Lite': { file: 'BiRefNet_lite', desc: 'Super-lightweight model tuned for rapid low-RAM hardware' },
-  'General-Lite-2K': { file: 'BiRefNet_lite-2K', desc: 'High-Scale lightweight 2K resolution border processing' },
-  'DIS': { file: 'BiRefNet-DIS5K', desc: 'Dichotomous Image Segmentation mode for maximum edge precision' },
-  'HRSOD': { file: 'BiRefNet-HRSOD', desc: 'High-Resolution Salient Object Detection for dominant items' },
-  'HRSOD-DHU': { file: 'BiRefNet-HRSOD_DHU-ONNX', desc: 'ONNX-optimized ultra high-resolution salient object detection' },
-  'COD': { file: 'BiRefNet-COD', desc: 'Camouflaged Object Detection mode targeting blended subjects' },
-  'DIS-TR_TEs': { file: 'BiRefNet-DIS5K-TR_TEs', desc: 'DIS fine-tuned on specialized dataset splits' },
-  'General-legacy': { file: 'BiRefNet-legacy', desc: 'Baseline legacy general weights execution standard' },
-  'General-dynamic': { file: 'BiRefNet_dynamic', desc: 'Dynamic aspects ratios model adapting to direct sizes' },
-  'Matting-dynamic': { file: 'BiRefNet_dynamic-matting', desc: 'Dynamic aspects ratios optimized for soft alpha details' },
+  'General': { file: 'BiRefNet', desc: 'Standard central subject high-fidelity segmentation (Default). (Suggested Resolution: 1024x1024)' },
+  'General-HR': { file: 'BiRefNet_HR', desc: 'High-Resolution sharp boundary extraction for crisp details. (Suggested Resolution: 2048x2048)' },
+  'Matting-HR': { file: 'BiRefNet_HR-matting', desc: 'High-Resolution matting tuned for micro hair/fur layers. (Suggested Resolution: 2048x2048)' },
+  'Matting': { file: 'BiRefNet-matting', desc: 'Soft transition transparent alpha details for fine objects. (Suggested Resolution: 1024x1024)' },
+  'Portrait': { file: 'BiRefNet-portrait', desc: 'Highly centered saliency prioritizing human head/shoulders. (Suggested Resolution: 1024x1024)' },
+  'General-reso_512': { file: 'BiRefNet_512x512', desc: 'Fast execution speed utilizing compact 512px space. (Suggested Resolution: 512x512)' },
+  'General-Lite': { file: 'BiRefNet_lite', desc: 'Super-lightweight model tuned for rapid low-RAM hardware. (Suggested Resolution: 1024x1024)' },
+  'General-Lite-2K': { file: 'BiRefNet_lite-2K', desc: 'High-Scale lightweight 2K resolution border processing. (Suggested Resolution: 2048x2048)' },
+  'DIS': { file: 'BiRefNet-DIS5K', desc: 'Dichotomous Image Segmentation mode for maximum edge precision. (Suggested Resolution: 1024x1024)' },
+  'HRSOD': { file: 'BiRefNet-HRSOD', desc: 'High-Resolution Salient Object Detection for dominant items. (Suggested Resolution: 1024x1024)' },
+  'HRSOD-DHU': { file: 'BiRefNet-HRSOD_DHU-ONNX', desc: 'ONNX-optimized ultra high-resolution salient object detection. (Suggested Resolution: 1024x1024)' },
+  'COD': { file: 'BiRefNet-COD', desc: 'Camouflaged Object Detection mode targeting blended subjects. (Suggested Resolution: 1024x1024)' },
+  'DIS-TR_TEs': { file: 'BiRefNet-DIS5K-TR_TEs', desc: 'DIS fine-tuned on specialized dataset splits. (Suggested Resolution: 1024x1024)' },
+  'General-legacy': { file: 'BiRefNet-legacy', desc: 'Baseline legacy general weights execution standard. (Suggested Resolution: 1024x1024)' },
+  'General-dynamic': { file: 'BiRefNet_dynamic', desc: 'Dynamic aspects ratios model adapting to direct sizes. (Suggested Resolution: Up to 1024x1024)' },
+  'Matting-dynamic': { file: 'BiRefNet_dynamic-matting', desc: 'Dynamic aspects ratios optimized for soft alpha details. (Suggested Resolution: Up to 1024x1024)' },
 };
 
 interface EraserStageProps {
@@ -64,6 +66,7 @@ export default function EraserStage({
 }: EraserStageProps) {
   const [image, setImage] = useState<string | null>(null);
   const [originalImageObj, setOriginalImageObj] = useState<HTMLImageElement | null>(null);
+  const [originalFileName, setOriginalFileName] = useState<string>("image.png");
   const [processing, setProcessing] = useState(false);
   const [progress, setProgress] = useState(0);
   const [progressMsg, setProgressMsg] = useState("");
@@ -77,6 +80,7 @@ export default function EraserStage({
   const [brushMode, setBrushMode] = useState<"erase" | "restore">("erase");
   const [editorTool, setEditorTool] = useState<"none" | "brush" | "background">("none");
   const [compareSplit, setCompareSplit] = useState(50); // percentage 0-100
+  const [isSlidingCompare, setIsSlidingCompare] = useState(false);
   const [isComparing, setIsComparing] = useState(true);
   const [bgType, setBgType] = useState<"transparent" | "solid" | "pattern">("transparent");
   const [solidBgColor, setSolidBgColor] = useState("#10B981"); // vibrant emerald
@@ -110,6 +114,8 @@ export default function EraserStage({
 
   // Brush drawing state
   const [isPainting, setIsPainting] = useState(false);
+  const [isReevaluating, setIsReevaluating] = useState(false);
+  const lastProcessedRef = useRef<{ src: string; confidence: number; weights: string } | null>(null);
 
   // Vector Graphic Presets: Dynamic, vector drawing functions to avoid CORS errors when fetching pixel data!
   const stockPresets: StockPreset[] = [
@@ -345,6 +351,8 @@ export default function EraserStage({
     setIsComparing(false);
     setEditorTool("none");
     setLogs([]);
+    lastProcessedRef.current = null;
+    setOriginalFileName(`${preset.name.toLowerCase().replace(/\s+/g, "_")}.png`);
 
     const canvas = document.createElement("canvas");
     canvas.width = 600;
@@ -376,6 +384,8 @@ export default function EraserStage({
     setIsComparing(false);
     setEditorTool("none");
     setLogs([]);
+    lastProcessedRef.current = null;
+    setOriginalFileName(file.name);
 
     const reader = new FileReader();
     reader.onload = (event) => {
@@ -397,15 +407,28 @@ export default function EraserStage({
     ]);
   };
 
-  const handleBatchFilesUploaded = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleBatchFilesUploaded = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    const newItems: BatchQueueItem[] = Array.from(files).map((file: any) => ({
-      id: Math.random().toString(36).substring(2, 9),
-      name: file.name,
-      file: file as File,
-    }));
+    const filesArray = Array.from(files);
+    const newItems: BatchQueueItem[] = await Promise.all(
+      filesArray.map(async (file: any) => {
+        let resolution = "";
+        try {
+          const img = await loadImgFromFile(file);
+          resolution = `${img.naturalWidth}x${img.naturalHeight}`;
+        } catch (err) {
+          console.error("Failed to load resolution for batch file", err);
+        }
+        return {
+          id: Math.random().toString(36).substring(2, 9),
+          name: file.name,
+          file: file as File,
+          resolution,
+        };
+      })
+    );
 
     setBatchQueue((prev) => [...prev, ...newItems]);
     setBatchResults([]);
@@ -417,6 +440,7 @@ export default function EraserStage({
       id: preset.id,
       name: preset.name,
       preset,
+      resolution: "600x600",
     }));
     setBatchQueue((prev) => [...prev, ...newItems]);
     setBatchResults([]);
@@ -580,10 +604,10 @@ export default function EraserStage({
         // Composite chosen background output
         const urlOutput = convertImageDataToUrl(maskedData, bgType, solidBgColor, bgPattern);
 
-        // Generate names
-        const cleanName = item.name.replace(/\.[^/.]+$/, "");
-        const timestamp = new Date().toISOString().replace(/[-:T.]/g, "").slice(8, 14);
-        const outFileName = `birefnet_${cleanName || "batch"}_${timestamp}.png`;
+        // Generate names using customized naming format template
+        const template = localStorage.getItem("birefnet_filename_template") || "<Original_Filename>_sgibr[Counter]_[Date]";
+        const resoStr = `${img.naturalWidth}x${img.naturalHeight}`;
+        const outFileName = generateFormattedFilename(template, item.name, idx + 1, resoStr);
 
         // Save into app native gallery database
         onSaveToDevice(urlOutput, outFileName);
@@ -733,6 +757,14 @@ export default function EraserStage({
       setEditorTool("background");
       setProcessing(false);
       setTpuActive(false);
+      
+      if (originalImageObj) {
+        lastProcessedRef.current = {
+          src: originalImageObj.src,
+          confidence,
+          weights: birefnetWeights
+        };
+      }
 
       // Draw canvas with safety timeout for React DOM cycle to mount the canvas
       setTimeout(() => {
@@ -768,6 +800,20 @@ export default function EraserStage({
   // Redraw canvases when Confidence, Weight settings or states change
   useEffect(() => {
     if (isMasked && originalImageObj && !processing) {
+      // Check if we already processed this exact image with these exact settings
+      if (
+        lastProcessedRef.current &&
+        lastProcessedRef.current.src === originalImageObj.src &&
+        lastProcessedRef.current.confidence === confidence &&
+        lastProcessedRef.current.weights === birefnetWeights
+      ) {
+        // Already processed, exit immediately to prevent block loops!
+        return;
+      }
+
+      // We are starting re-evaluation of parameters
+      setIsReevaluating(true);
+
       ImageProcessor.removeBackgroundLocally(originalImageObj, confidence, birefnetWeights)
         .then((maskedData) => {
           const procCanvas = processedCanvasRef.current;
@@ -783,12 +829,63 @@ export default function EraserStage({
               brushCanvas.height = maskedData.height;
             }
           }
+          
+          lastProcessedRef.current = {
+            src: originalImageObj.src,
+            confidence,
+            weights: birefnetWeights
+          };
+          setIsReevaluating(false);
+        })
+        .catch((err) => {
+          console.error("Re-evaluation failed:", err);
+          setIsReevaluating(false);
         });
     } else if (!isMasked && originalImageObj && !processing) {
       // Image is loaded but not yet processed: render the original image to the preview canvas immediately!
       initializeCanvases(originalImageObj);
     }
   }, [confidence, birefnetWeights, isMasked, processing, originalImageObj]);
+
+  // Unified Pointer/Touch handlers for direct image comparison sliding
+  const updateComparePosition = (e: React.PointerEvent<HTMLDivElement>) => {
+    const container = e.currentTarget;
+    if (!container) return;
+
+    const rect = container.getBoundingClientRect();
+    const clientX = e.clientX;
+
+    // Relative percentage split bounds
+    let percentage = ((clientX - rect.left) / rect.width) * 100;
+    if (percentage < 0) percentage = 0;
+    if (percentage > 100) percentage = 100;
+
+    setCompareSplit(Math.round(percentage));
+  };
+
+  const handleComparisonPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isComparing || !isMasked || editorTool === "brush") return;
+    
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch (err) {}
+    
+    setIsSlidingCompare(true);
+    updateComparePosition(e);
+  };
+
+  const handleComparisonPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isSlidingCompare) return;
+    updateComparePosition(e);
+  };
+
+  const handleComparisonPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!isSlidingCompare) return;
+    setIsSlidingCompare(false);
+    try {
+      e.currentTarget.releasePointerCapture(e.pointerId);
+    } catch (err) {}
+  };
 
   // Handle Touch/Mouse Painting on the Brush Alpha Overlay Canvas
   const getCanvasCoords = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
@@ -814,7 +911,7 @@ export default function EraserStage({
   };
 
   const handlePaintStart = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
-    if (editorTool !== "brush" || !isMasked) return;
+    if (editorTool !== "brush" || !isMasked || isReevaluating || processing) return;
     setIsPainting(true);
     
     // Draw initial dot
@@ -823,7 +920,7 @@ export default function EraserStage({
   };
 
   const handlePaintMove = (e: React.MouseEvent<HTMLCanvasElement> | React.TouchEvent<HTMLCanvasElement>) => {
-    if (!isPainting || editorTool !== "brush") return;
+    if (!isPainting || editorTool !== "brush" || isReevaluating || processing) return;
     const coords = getCanvasCoords(e);
     paintOnCanvas(coords.x, coords.y);
   };
@@ -895,8 +992,11 @@ export default function EraserStage({
     ctx.drawImage(procCanvas, 0, 0);
 
     const mergedUrl = exportCanvas.toDataURL("image/png");
-    const timestamp = new Date().toISOString().replace(/[-:T.]/g, "").slice(0, 14);
-    const filename = `birefnet_${timestamp}.png`;
+    
+    // Generate name using customized naming format template
+    const template = localStorage.getItem("birefnet_filename_template") || "<Original_Filename>_sgibr[Counter]_[Date]";
+    const resoStr = originalImageObj ? `${originalImageObj.naturalWidth}x${originalImageObj.naturalHeight}` : "unknown";
+    const filename = generateFormattedFilename(template, originalFileName, 1, resoStr);
 
     // Trigger true browser save download anchor
     const link = document.createElement("a");
@@ -1018,7 +1118,7 @@ export default function EraserStage({
         <div className="flex-1 flex flex-col justify-between">
           
           {/* Active Canvas Display Frame */}
-          <div className="flex-1 flex items-center justify-center bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] bg-slate-900/50 border border-white/10 rounded-3xl relative overflow-hidden h-[180px] min-h-[160px] max-h-[300px] mb-3">
+          <div className="flex-1 flex items-center justify-center bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')] bg-slate-900/50 border border-white/10 rounded-3xl relative overflow-hidden h-[240px] min-h-[180px] max-h-[400px] sm:max-h-[45vh] p-4 mb-3">
             
             {/* Transparent checkerboard template backdrop */}
             <div className="absolute inset-0 select-none bg-[radial-gradient(#ffffff0a_1px,transparent_1px)] [background-size:16px_16px] pointer-events-none"></div>
@@ -1037,19 +1137,29 @@ export default function EraserStage({
               <div className="absolute inset-0 z-0 bg-gradient-to-tr from-violet-900 via-slate-950 to-indigo-950" />
             )}
 
-            {/* If processing is active, show the overlay indicator directly on top of the original/active image! */}
-            {processing && (
-              <div id="tpu-processing-glass-overlay" className="absolute inset-0 bg-[#080a13]/70 backdrop-blur-md z-30 flex flex-col items-center justify-center p-4">
+            {/* If processing or re-evaluating, show the overlay indicator directly on top of the original/active image! */}
+            {(processing || isReevaluating) && (
+              <div id="tpu-processing-glass-overlay" className="absolute inset-0 bg-[#080a13]/75 backdrop-blur-md z-30 flex flex-col items-center justify-center p-4 select-none">
                 <RefreshCw className="w-8 h-8 text-indigo-400 animate-spin mb-3" />
-                <h3 className="text-xs font-bold text-white mb-1 uppercase tracking-wider select-none">TPU Offline Inference</h3>
-                <p className="text-[10px] text-slate-350 font-mono text-center max-w-[85%] truncate mb-3 select-all">{progressMsg}</p>
-                <div className="w-2/3 bg-white/10 rounded-full h-1 overflow-hidden mb-1">
-                  <div 
-                    className="bg-indigo-500 h-full rounded-full transition-all duration-350 shadow-[0_0_10px_rgba(99,102,241,0.5)]" 
-                    style={{ width: `${progress}%` }}
-                  />
-                </div>
-                <span className="text-[9px] font-mono font-bold text-indigo-400">{progress}% COMPLETED</span>
+                <h3 className="text-xs font-bold text-white mb-1 uppercase tracking-wider">
+                  {processing ? "TPU Offline Inference" : "Please Wait"}
+                </h3>
+                <p className="text-[10px] text-slate-300 font-mono text-center max-w-[85%] truncate mb-3">
+                  {processing ? progressMsg : "Recalculating background matte thresholds..."}
+                </p>
+                {processing ? (
+                  <>
+                    <div className="w-2/3 bg-white/10 rounded-full h-1 overflow-hidden mb-1">
+                      <div 
+                        className="bg-indigo-500 h-full rounded-full transition-all duration-350 shadow-[0_0_10px_rgba(99,102,241,0.5)]" 
+                        style={{ width: `${progress}%` }}
+                      />
+                    </div>
+                    <span className="text-[9px] font-mono font-bold text-indigo-400">{progress}% COMPLETED</span>
+                  </>
+                ) : (
+                  <span className="text-[9px] font-mono font-bold text-indigo-400 animate-pulse">OPTIMIZING TRANSPARENCY MATTE...</span>
+                )}
               </div>
             )}
 
@@ -1058,11 +1168,17 @@ export default function EraserStage({
             
             {/* Comparison Visualizer Container */}
             <div 
-              className="relative overflow-hidden w-full h-full max-w-[85%] max-h-[85%] rounded-xl flex items-center justify-center border border-slate-800/80 shadow-[0_10px_25px_rgba(0,0,0,0.5)] transition-all duration-300"
+              className={`relative overflow-hidden rounded-xl flex items-center justify-center border border-slate-800/80 shadow-[0_10px_25px_rgba(0,0,0,0.5)] transition-all duration-300 max-w-full max-h-full ${
+                isComparing && isMasked && editorTool !== "brush" 
+                  ? "cursor-ew-resize touch-none select-none" 
+                  : ""
+              }`}
+              onPointerDown={handleComparisonPointerDown}
+              onPointerMove={handleComparisonPointerMove}
+              onPointerUp={handleComparisonPointerUp}
+              onPointerCancel={handleComparisonPointerUp}
+              onPointerLeave={handleComparisonPointerUp}
               style={{
-                aspectRatio: originalImageObj 
-                  ? `${originalImageObj.naturalWidth / originalImageObj.naturalHeight}`
-                  : "1",
                 backgroundColor: !isMasked
                   ? "rgba(2, 6, 23, 0.2)"
                   : bgType === "solid"
@@ -1080,6 +1196,12 @@ export default function EraserStage({
                   : "auto"
               }}
             >
+              {/* Invisible sizer image to naturally and perfectly establish container aspect ratio and bounding box without clipping */}
+              <img
+                src={image}
+                alt="Sizing guide"
+                className="invisible pointer-events-none select-none max-w-full max-h-[200px] sm:max-h-[38vh] object-contain block"
+              />
               
               {/* Processed (Masked/Transparent Canvas) */}
               <canvas
@@ -1092,7 +1214,9 @@ export default function EraserStage({
                 onTouchStart={handlePaintStart}
                 onTouchMove={handlePaintMove}
                 onTouchEnd={handlePaintStop}
-                className="absolute inset-0 w-full h-full z-10 cursor-crosshair rounded-xl"
+                className={`absolute inset-0 w-full h-full z-10 cursor-crosshair rounded-xl ${
+                  editorTool !== "brush" ? "pointer-events-none" : ""
+                }`}
                 style={{
                   clipPath: isComparing && isMasked
                     ? `polygon(0 0, ${compareSplit}% 0, ${compareSplit}% 100%, 0 100%)`
@@ -1105,7 +1229,7 @@ export default function EraserStage({
                 <img
                   src={image}
                   alt="Original template"
-                  className="absolute inset-0 w-full h-full pointer-events-none opacity-85 rounded-xl object-fill"
+                  className="absolute inset-0 w-full h-full pointer-events-none opacity-85 rounded-xl object-contain"
                   style={{
                     clipPath: `polygon(${compareSplit}% 0, 100% 0, 100% 100%, ${compareSplit}% 100%)`
                   }}
@@ -1144,6 +1268,24 @@ export default function EraserStage({
               </div>
             )}
           </div>
+
+          {/* Compact Image Metrics Bar - Always displays exact pixel resolution under loaded image */}
+          {originalImageObj && (
+            <div className="flex items-center justify-between px-4 py-2 bg-black/25 border border-white/5 rounded-2xl mb-3 text-[10px] font-mono text-slate-300">
+              <span className="flex items-center gap-1.5 uppercase tracking-wider text-slate-500 font-bold">
+                <ImageIcon className="w-3.5 h-3.5 text-indigo-400" />
+                Resolution
+              </span>
+              <div className="flex items-center gap-3">
+                <span className="bg-indigo-500/10 text-indigo-300 font-bold px-2 py-0.5 rounded-lg border border-indigo-500/20">
+                  {originalImageObj.naturalWidth} × {originalImageObj.naturalHeight} px
+                </span>
+                <span className="text-slate-500 bg-white/5 px-2 py-0.5 rounded-lg border border-white/5">
+                  Ratio: {(originalImageObj.naturalWidth / originalImageObj.naturalHeight).toFixed(2)}
+                </span>
+              </div>
+            </div>
+          )}
 
           {/* 5. Tool Action Control Bar */}
           <div className="bg-[#1a1f36]/40 backdrop-blur-md border border-white/10 rounded-3xl p-3.5 mb-1 flex flex-col gap-3">
@@ -1234,8 +1376,9 @@ export default function EraserStage({
                   <select
                     id="birefnet-weights-select"
                     value={birefnetWeights}
+                    disabled={isReevaluating || processing}
                     onChange={(e) => setBirefnetWeights(e.target.value)}
-                    className="w-full bg-black/40 border border-white/10 rounded-xl px-2.5 py-2 text-xs font-semibold text-slate-100 placeholder-slate-650 focus:outline-none focus:border-indigo-500 cursor-pointer"
+                    className="w-full bg-black/40 border border-white/10 rounded-xl px-2.5 py-2 text-xs font-semibold text-slate-100 placeholder-slate-650 focus:outline-none focus:border-indigo-500 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                   >
                     {Object.entries(BIREFNET_WEIGHTS_MAP).map(([key, info]) => (
                       <option key={key} value={key} className="bg-[#121629] text-slate-200">
@@ -1267,8 +1410,9 @@ export default function EraserStage({
                         max="0.95"
                         step="0.01"
                         value={confidence}
+                        disabled={isReevaluating || processing}
                         onChange={(e) => setConfidence(Number(e.target.value))}
-                        className="w-full accent-indigo-500 h-1 bg-black/30 rounded cursor-pointer"
+                        className="w-full accent-indigo-500 h-1 bg-black/30 rounded cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                       />
                       <span className="text-[10px] text-slate-500 leading-normal italic">
                         Uses the continuous, raw mathematical sigmoid probability score computed locally from onnx-community/BiRefNet model prediction tensors.
@@ -1387,7 +1531,8 @@ export default function EraserStage({
                 <div className="flex gap-2">
                   <button
                     onClick={() => setIsComparing(!isComparing)}
-                    className={`flex-1 py-2 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 border transition-all cursor-pointer ${
+                    disabled={isReevaluating || processing}
+                    className={`flex-1 py-2 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 border transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
                       isComparing 
                         ? "bg-[#0a0c14]/40 border-indigo-500/40 text-indigo-400" 
                         : "bg-[#0a0c14]/40 border-white/5 text-slate-400 hover:text-slate-200 hover:bg-white/5"
@@ -1400,7 +1545,8 @@ export default function EraserStage({
                   <button
                     id="save-processed-file-btn"
                     onClick={handleSaveAndExport}
-                    className="flex-[1.5] bg-indigo-500 hover:bg-indigo-600 active:scale-[0.98] text-white font-bold py-2 px-4 rounded-xl flex items-center justify-center gap-2 transition-all text-xs cursor-pointer shadow-xl shadow-indigo-500/25"
+                    disabled={isReevaluating || processing}
+                    className="flex-[1.5] bg-indigo-500 hover:bg-indigo-600 active:scale-[0.98] text-white font-bold py-2 px-4 rounded-xl flex items-center justify-center gap-2 transition-all text-xs cursor-pointer shadow-xl shadow-indigo-500/25 disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-slate-800 disabled:shadow-none"
                   >
                     <Download className="w-4 h-4" />
                     Save to Device Gallery
@@ -1506,6 +1652,11 @@ export default function EraserStage({
                         <div className="flex items-center gap-2 truncate flex-1 min-w-0">
                           <span className="text-[9px] font-mono text-slate-500 shrink-0">#{qIdx + 1}</span>
                           <span className="truncate font-medium">{item.name}</span>
+                          {item.resolution && (
+                            <span className="text-[8px] px-1.5 py-0.5 bg-slate-800/80 text-indigo-300 font-mono font-semibold rounded border border-white/5 shrink-0">
+                              {item.resolution}
+                            </span>
+                          )}
                           {isProcessingThis && (
                             <RefreshCw className="w-3 h-3 text-indigo-400 animate-spin shrink-0" />
                           )}
